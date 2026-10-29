@@ -1,22 +1,50 @@
+import argparse
 
 from clearml import Task, PipelineController
 
 PROJECT_NAME = "LLM pipeline test"
 PIPELINE_NAME = "IMDB Sentiment Analysis Pipeline"
 
+# Step templates track the branch head (no pinned commit), so they only need
+# to be created once; code changes on the branch are picked up automatically.
+REPO_URL = "https://github.com/ccasert/clearml-transformers.git"
+REPO_BRANCH = "main"
+TEMPLATE_TAG = "pipeline-template"
+
+# clearml is pinned: newer releases upgrade numpy to 2.x, which breaks the
+# image's torch build.
 CONTAINER_SETUP_SCRIPT = """
-pip install clearml
+pip install clearml==2.0.2
 export RANK=$SLURM_PROCID
 export LOCAL_RANK=$SLURM_LOCALID
 export WORLD_SIZE=$SLURM_NTASKS
 """
 DOCKER_IMAGE = "nersc/pytorch:24.08.01"
 
-# can use Docker overrides for pipeline steps
-docker_overrides = {
-    'container.image': DOCKER_IMAGE,
-    'container.docker_bash_setup_script': CONTAINER_SETUP_SCRIPT
-}
+parser = argparse.ArgumentParser()
+parser.add_argument("--queue", default="muller")
+args = parser.parse_args()
+
+
+def get_or_create_template(name, **kwargs):
+    """Reuse an existing step template so each launch only creates the
+    controller and step tasks."""
+    found = Task.get_tasks(
+        project_name=PROJECT_NAME,
+        task_name=f"^{name}$",
+        tags=[TEMPLATE_TAG],
+        task_filter={"status": ["created"]},
+    )
+    if found:
+        return found[0]
+    task = Task.create(
+        project_name=PROJECT_NAME, task_name=name,
+        repo=REPO_URL, branch=REPO_BRANCH,
+        docker=DOCKER_IMAGE, docker_bash_setup_script=CONTAINER_SETUP_SCRIPT,
+        add_task_init_call=False, **kwargs
+    )
+    task.add_tags([TEMPLATE_TAG])
+    return task
 
 
 pipe = PipelineController(
@@ -25,7 +53,7 @@ pipe = PipelineController(
     version="1.2",
 )
 
-pipe.set_default_execution_queue('experimental')
+pipe.set_default_execution_queue(args.queue)
 
 pipe.add_parameter(
     name="raw_dataset_id",
@@ -38,30 +66,17 @@ pipe.add_parameter(
     default="distilbert-base-uncased"
 )
 
-base_preprocess_task = Task.create(
-    project_name=PROJECT_NAME, task_name="Base Preprocessing Task",
-    script="preprocess.py", docker=DOCKER_IMAGE,
-    docker_bash_setup_script=CONTAINER_SETUP_SCRIPT, add_task_init_call=False
-)
-base_train_task = Task.create(
-    project_name=PROJECT_NAME, task_name="Base Training Task",
-    script="train.py",
-    binary="accelerate launch",
-    docker=DOCKER_IMAGE,
-    docker_bash_setup_script=CONTAINER_SETUP_SCRIPT,
-    add_task_init_call=False
-)
+base_preprocess_task = get_or_create_template(
+    "Template: preprocess", script="preprocess.py")
+base_train_task = get_or_create_template(
+    "Template: train", script="train.py", binary="accelerate launch")
 base_train_task.set_user_properties(
     num_nodes=2,
     ntasks_per_node=4,
     cpus_per_task=32,
 )
-
-base_eval_task = Task.create(
-    project_name=PROJECT_NAME, task_name="Base Evaluation Task",
-    script="eval.py", docker=DOCKER_IMAGE,
-    docker_bash_setup_script=CONTAINER_SETUP_SCRIPT, add_task_init_call=False
-)
+base_eval_task = get_or_create_template(
+    "Template: evaluate", script="eval.py")
 
 preprocess_step_name = "step_preprocess"
 pipe.add_step(
