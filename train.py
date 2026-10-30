@@ -19,24 +19,14 @@ def setup_ddp():
     print(f"[Process {rank}] World size: {world_size}, Local rank: {local_rank}, Device: {torch.cuda.current_device()}")
     return rank, local_rank, world_size
 
-def train_model(processed_dataset_id: str, base_model: str):
+def train_model(processed_dataset_id: str, base_model: str, epochs: int,
+                learning_rate: float, train_batch_size: int, eval_batch_size: int):
     rank, local_rank, world_size = setup_ddp()
 
     if rank == 0:
         task = Task.init(project_name="LLM pipeline test", task_name="Model Training")
         logger = task.get_logger()
         logger.report_text(f"Step 2: Training model using processed dataset ID: {processed_dataset_id}")
-
-        hyperparams = {
-            'epochs': 3,
-            'learning_rate': 1e-5,
-            'train_batch_size': 16,
-            'eval_batch_size': 16,
-            'world_size': world_size,
-        }
-        task.connect(hyperparams)
-    else:
-        hyperparams = {}
 
     if rank != 0:
         dist.barrier()
@@ -52,10 +42,10 @@ def train_model(processed_dataset_id: str, base_model: str):
 
     training_args = TrainingArguments(
         output_dir=f"./results_rank_{rank}",
-        num_train_epochs=hyperparams.get('epochs', 3),
-        learning_rate=hyperparams.get('learning_rate', 1e-5),
-        per_device_train_batch_size=hyperparams.get('train_batch_size', 16),
-        per_device_eval_batch_size=hyperparams.get('eval_batch_size', 16),
+        num_train_epochs=epochs,
+        learning_rate=learning_rate,
+        per_device_train_batch_size=train_batch_size,
+        per_device_eval_batch_size=eval_batch_size,
         logging_dir=f'./logs_rank_{rank}',
         logging_steps=100,
         eval_strategy="epoch",
@@ -88,6 +78,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--processed_dataset_id", type=str, required=True, help="ID of the processed ClearML Dataset")
     parser.add_argument("--base_model", type=str, default="distilbert-base-uncased")
+    # Hyperparameters are argparse args, not task.connect() values: ClearML
+    # applies Args/* overrides on every rank, but connect() only on rank 0.
+    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--learning_rate", type=float, default=1e-5)
+    parser.add_argument("--train_batch_size", type=int, default=16)
+    parser.add_argument("--eval_batch_size", type=int, default=16)
     args = parser.parse_args()
 
-    train_model(args.processed_dataset_id, args.base_model)
+    train_model(args.processed_dataset_id, args.base_model, args.epochs,
+                args.learning_rate, args.train_batch_size, args.eval_batch_size)
