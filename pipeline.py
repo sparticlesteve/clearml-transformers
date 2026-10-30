@@ -10,7 +10,6 @@ TAGS = ["sc26-test", "llm-pipeline"]
 # current head commit (see get_head_commit), so templates only need to be
 # created once and code changes on the branch are picked up automatically.
 REPO_URL = "https://github.com/sparticlesteve/clearml-transformers.git"
-TEMPLATE_TAG = "pipeline-template"
 
 # clearml is pinned: newer releases upgrade numpy to 2.x, which breaks the
 # image's torch build.
@@ -47,11 +46,10 @@ def get_head_commit(repo, branch):
 
 def get_or_create_template(name, **kwargs):
     """Reuse an existing step template so each launch only creates the
-    controller and step tasks."""
+    controller and step tasks. Steps inherit the template's tags."""
     found = Task.get_tasks(
         project_name=args.project,
         task_name=f"^{name}$",
-        tags=[TEMPLATE_TAG],
         task_filter={"status": ["created"]},
     )
     if found:
@@ -62,14 +60,8 @@ def get_or_create_template(name, **kwargs):
         docker=DOCKER_IMAGE, docker_bash_setup_script=CONTAINER_SETUP_SCRIPT,
         add_task_init_call=False, **kwargs
     )
-    task.add_tags([TEMPLATE_TAG] + TAGS)
+    task.add_tags(TAGS)
     return task
-
-
-def tag_step(pipeline, node, parameters):
-    if node.job and node.job.task:
-        node.job.task.add_tags(TAGS)
-    return True
 
 
 commit = get_head_commit(REPO_URL, args.branch)
@@ -121,7 +113,6 @@ pipe.add_step(
         "Args/base_model": "${pipeline.base_model}"
     },
     task_overrides=step_overrides,
-    pre_execute_callback=tag_step,
     cache_executed_step=True,
 )
 
@@ -137,7 +128,6 @@ pipe.add_step(
         "Args/learning_rate": "${pipeline.learning_rate}",
     },
     task_overrides=step_overrides,
-    pre_execute_callback=tag_step,
 )
 
 
@@ -151,7 +141,6 @@ pipe.add_step(
         "Args/model_task_id": "${step_train.id}"
     },
     task_overrides=step_overrides,
-    pre_execute_callback=tag_step,
 )
 
 
