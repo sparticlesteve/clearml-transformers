@@ -8,8 +8,8 @@ from datasets import load_dataset
 from clearml import Dataset
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--hf-dataset", default="imdb",
-                    help="Hugging Face dataset, e.g. imdb or cornell-movie-review-data/rotten_tomatoes")
+parser.add_argument("--hf-dataset", default="stanfordnlp/imdb",
+                    help="Hugging Face dataset, e.g. stanfordnlp/imdb or cornell-movie-review-data/rotten_tomatoes")
 parser.add_argument("--name", default=None, help="ClearML dataset name (default: <hf name>_raw)")
 parser.add_argument("--project", default="SC26 demo-dev/LLM pipeline")
 parser.add_argument("--tags", nargs="*", default=["sc26-test", "llm-pipeline"])

@@ -26,7 +26,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--project", default="SC26 demo-dev/LLM pipeline")
 parser.add_argument("--queue", default="muller")
 parser.add_argument("--branch", default="sc26-demo")
-parser.add_argument("--raw-dataset-id", default="f38bce9da2994eeb91e37b850a4049ab",
+parser.add_argument("--raw-dataset-id", default="cf56cd3cb38a47f0b91d68cf5f034161",
                     help="ClearML Dataset ID of the raw data (default: IMDB)")
 parser.add_argument("--base-model", default="distilbert-base-uncased")
 parser.add_argument("--epochs", type=int, default=3)
