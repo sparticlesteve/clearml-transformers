@@ -9,6 +9,9 @@ TAGS = ["sc26-test", "llm-pipeline"]
 # Step templates track a branch; each launch pins the steps to the branch's
 # current head commit (see get_head_commit), so templates only need to be
 # created once and code changes on the branch are picked up automatically.
+# The train step runs as plain python: the Slurm agent ignores other binaries
+# (e.g. "accelerate launch"). srun starts one process per GPU and
+# CONTAINER_SETUP_SCRIPT maps the Slurm ranks to torch.distributed variables.
 REPO_URL = "https://github.com/sparticlesteve/clearml-transformers.git"
 
 # clearml is pinned: newer releases upgrade numpy to 2.x, which breaks the
@@ -34,9 +37,8 @@ args = parser.parse_args()
 
 
 def get_head_commit(repo, branch):
-    """Resolve the branch head now, so step tasks record a fixed commit.
-    Tasks that only name a branch get their binary reset to python after
-    completing, which breaks clones of the train step."""
+    """Resolve the branch head now, so each step task records the exact
+    commit it ran."""
     out = subprocess.run(["git", "ls-remote", repo, f"refs/heads/{branch}"],
                          check=True, capture_output=True, text=True).stdout
     if not out:
@@ -95,7 +97,7 @@ pipe.add_parameter(name="learning_rate", description="Training learning rate.", 
 base_preprocess_task = get_or_create_template(
     "Template: preprocess", script="preprocess.py")
 base_train_task = get_or_create_template(
-    "Template: train", script="train.py", binary="accelerate launch")
+    "Template: train", script="train.py")
 base_train_task.set_user_properties(
     num_nodes=2,
     ntasks_per_node=4,
