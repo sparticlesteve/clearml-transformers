@@ -2,6 +2,7 @@ import argparse
 import subprocess
 
 from clearml import Task, PipelineController
+from clearml.backend_interface.util import get_or_create_project
 
 PIPELINE_NAME = "Sentiment Analysis Pipeline"
 TAGS = ["sc26-test", "llm-pipeline"]
@@ -50,14 +51,14 @@ def get_or_create_template(name, **kwargs):
     """Reuse an existing step template so each launch only creates the
     controller and step tasks. Steps inherit the template's tags."""
     found = Task.get_tasks(
-        project_name=args.project,
+        project_name=template_project,
         task_name=f"^{name}$",
-        task_filter={"status": ["created"]},
+        task_filter={"status": ["created"], "search_hidden": True, "_allow_extra_fields_": True},
     )
     if found:
         return found[0]
     task = Task.create(
-        project_name=args.project, task_name=name,
+        project_name=template_project, task_name=name,
         repo=REPO_URL, branch=args.branch,
         docker=DOCKER_IMAGE, docker_bash_setup_script=CONTAINER_SETUP_SCRIPT,
         add_task_init_call=False, **kwargs
@@ -65,6 +66,11 @@ def get_or_create_template(name, **kwargs):
     task.add_tags(TAGS)
     return task
 
+
+# Templates go in a hidden subproject, like the pipeline's .pipelines and
+# .datasets; a leading dot alone doesn't hide a project, the system tag does.
+template_project = f"{args.project}/.templates"
+get_or_create_project(Task._get_default_session(), template_project, system_tags=["hidden"])
 
 commit = get_head_commit(REPO_URL, args.branch)
 print(f"Pinning steps to {args.branch} @ {commit[:8]}")
