@@ -34,6 +34,8 @@ parser.add_argument("--raw-dataset-id", default="cf56cd3cb38a47f0b91d68cf5f03416
 parser.add_argument("--base-model", default="distilbert-base-uncased")
 parser.add_argument("--epochs", type=int, default=3)
 parser.add_argument("--learning-rate", type=float, default=1e-5)
+parser.add_argument("--train-batch-size", type=int, default=16,
+                    help="Per-device training batch size")
 args = parser.parse_args()
 
 
@@ -99,6 +101,7 @@ pipe.add_parameter(
 )
 pipe.add_parameter(name="epochs", description="Training epochs.", default=args.epochs)
 pipe.add_parameter(name="learning_rate", description="Training learning rate.", default=args.learning_rate)
+pipe.add_parameter(name="train_batch_size", description="Per-device training batch size.", default=args.train_batch_size)
 
 base_preprocess_task = get_or_create_template(
     "Template: preprocess", script="preprocess.py")
@@ -134,6 +137,7 @@ pipe.add_step(
         "Args/base_model": "${pipeline.base_model}",
         "Args/epochs": "${pipeline.epochs}",
         "Args/learning_rate": "${pipeline.learning_rate}",
+        "Args/train_batch_size": "${pipeline.train_batch_size}",
     },
     task_overrides=step_overrides,
 )
