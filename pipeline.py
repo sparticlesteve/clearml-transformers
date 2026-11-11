@@ -1,4 +1,5 @@
 import argparse
+import os
 import subprocess
 
 from clearml import Task, PipelineController
@@ -27,7 +28,13 @@ DOCKER_IMAGE = "nersc/pytorch:24.08.01"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--project", default="SC26 demo-dev/LLM pipeline")
-parser.add_argument("--queue", default="muller")
+parser.add_argument("--queue", default=os.environ.get("LLM_PIPELINE_QUEUE", "muller"),
+                    help="Execution queue for all steps, e.g. muller, perlmutter, perlmutter-sc26 "
+                         "(default: $LLM_PIPELINE_QUEUE or muller)")
+parser.add_argument("--qos", help="Slurm QOS for all steps (task property), e.g. debug")
+parser.add_argument("--time", help="Slurm time limit for all steps (task property), e.g. 20 or 1:00:00")
+parser.add_argument("--tag", action="append", default=[],
+                    help="Extra tag for the controller and steps (repeatable)")
 parser.add_argument("--branch", default="sc26-demo")
 parser.add_argument("--raw-dataset-id", default="cf56cd3cb38a47f0b91d68cf5f034161",
                     help="ClearML Dataset ID of the raw data (default: IMDB)")
@@ -77,6 +84,13 @@ get_or_create_project(Task._get_default_session(), template_project, system_tags
 commit = get_head_commit(REPO_URL, args.branch)
 print(f"Pinning steps to {args.branch} @ {commit[:8]}")
 step_overrides = {"script.branch": args.branch, "script.version_num": commit}
+if args.tag:
+    step_overrides["tags"] = TAGS + args.tag
+
+# Slurm options are task properties (hyperparameter section "properties"),
+# read by the Slurm agent's job templates. Unset ones keep the queue defaults.
+slurm_props = {f"properties/{k}": v for k, v in
+               [("qos", args.qos), ("time", args.time)] if v}
 
 pipe = PipelineController(
     name=PIPELINE_NAME,
@@ -85,7 +99,7 @@ pipe = PipelineController(
     # Steps go in the project itself, not the pipeline's hidden subproject
     target_project=args.project,
 )
-pipe.add_tags(TAGS)
+pipe.add_tags(TAGS + args.tag)
 
 pipe.set_default_execution_queue(args.queue)
 
@@ -121,7 +135,8 @@ pipe.add_step(
     base_task_id=base_preprocess_task.id,
     parameter_override={
         "Args/raw_dataset_id": "${pipeline.raw_dataset_id}",
-        "Args/base_model": "${pipeline.base_model}"
+        "Args/base_model": "${pipeline.base_model}",
+        **slurm_props,
     },
     task_overrides=step_overrides,
     cache_executed_step=True,
@@ -138,6 +153,7 @@ pipe.add_step(
         "Args/epochs": "${pipeline.epochs}",
         "Args/learning_rate": "${pipeline.learning_rate}",
         "Args/train_batch_size": "${pipeline.train_batch_size}",
+        **slurm_props,
     },
     task_overrides=step_overrides,
 )
@@ -150,7 +166,8 @@ pipe.add_step(
     base_task_id=base_eval_task.id,
     parameter_override={
         "Args/processed_dataset_id": "${step_preprocess.parameters.General/processed_dataset_id}",
-        "Args/model_task_id": "${step_train.id}"
+        "Args/model_task_id": "${step_train.id}",
+        **slurm_props,
     },
     task_overrides=step_overrides,
 )
