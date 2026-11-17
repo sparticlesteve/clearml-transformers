@@ -3,9 +3,36 @@ import os
 import torch
 import torch.distributed as dist
 
-from transformers import AutoModelForSequenceClassification, Trainer, TrainingArguments
+from transformers import AutoModelForSequenceClassification, Trainer, TrainerCallback, TrainingArguments
 from datasets import load_from_disk
 from clearml import Task, Dataset
+
+class ClearMLMetricsCallback(TrainerCallback):
+    """Report each metric as its own ClearML plot (title = metric, series = train or eval).
+
+    Replaces the Hugging Face ClearML integration, which puts every eval metric
+    (loss, runtime, samples/s, ...) on one "eval" plot with very different scales.
+    """
+
+    # End-of-training summaries; not per-step metrics
+    SKIP = ("epoch", "total_flos", "train_runtime", "train_samples_per_second",
+            "train_steps_per_second", "train_loss")
+
+    def __init__(self, logger):
+        self.logger = logger
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if not state.is_world_process_zero or not logs:
+            return
+        for key, value in logs.items():
+            if key in self.SKIP or not isinstance(value, (int, float)):
+                continue
+            if key.startswith("eval_"):
+                title, series = key[len("eval_"):], "eval"
+            else:
+                title, series = key, "train"
+            self.logger.report_scalar(title=title, series=series, value=value, iteration=state.global_step)
+
 
 def setup_ddp():
     """Initializes the DDP process group."""
@@ -50,7 +77,7 @@ def train_model(processed_dataset_id: str, base_model: str, epochs: int,
         logging_steps=100,
         eval_strategy="epoch",
         save_strategy="epoch",
-        report_to="clearml",
+        report_to="none",  # metrics go through ClearMLMetricsCallback on rank 0
     )
 
     trainer = Trainer(
@@ -58,6 +85,7 @@ def train_model(processed_dataset_id: str, base_model: str, epochs: int,
         args=training_args,
         train_dataset=tokenized_datasets["train"],
         eval_dataset=tokenized_datasets["test"],
+        callbacks=[ClearMLMetricsCallback(logger)] if rank == 0 else [],
     )
 
     trainer.train()

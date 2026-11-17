@@ -6,7 +6,7 @@ from clearml import Task, PipelineController
 from clearml.backend_interface.util import get_or_create_project
 
 PIPELINE_NAME = "Sentiment Analysis Pipeline"
-TAGS = ["sc26-test", "llm-pipeline"]
+TAGS = []  # extra tags per run: --tag
 
 # Step templates track a branch; each launch pins the steps to the branch's
 # current head commit (see get_head_commit), so templates only need to be
